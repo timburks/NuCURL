@@ -107,7 +107,7 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
 {
     NSMutableData *body = [NSMutableData data];
     NSMutableDictionary *header = [NSMutableDictionary dictionary];
-    NSMutableDictionary *result = [NSDictionary dictionaryWithObjectsAndKeys:header, @"header", body, @"body", nil];
+    NSMutableDictionary *result = [NSMutableDictionary dictionaryWithObjectsAndKeys:header, @"header", body, @"body", nil];
     CURL *curl_handle = curl_easy_init();
     curl_easy_setopt(curl_handle, CURLOPT_URL, [path cStringUsingEncoding:NSUTF8StringEncoding]);
     curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, [[formData urlQueryString] cStringUsingEncoding:NSUTF8StringEncoding]);

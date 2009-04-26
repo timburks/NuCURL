@@ -110,6 +110,24 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     return result;
 }
 
+- (NSDictionary *) get:(NSString *) path userpwd:(NSString *) userpwd
+{
+    NSMutableData *body = [NSMutableData data];
+    NSMutableDictionary *header = [NSMutableDictionary dictionary];
+    NSMutableDictionary *result = [NSMutableDictionary dictionaryWithObjectsAndKeys:header, @"header", body, @"body", nil];
+    CURL *curl_handle = curl_easy_init();
+    curl_easy_setopt(curl_handle, CURLOPT_URL, [path cStringUsingEncoding:NSUTF8StringEncoding]);
+    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *) body);
+    curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, HeaderFunctionCallback);
+    curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *) result);
+    curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, [userAgent cStringUsingEncoding:NSUTF8StringEncoding]);
+    curl_easy_setopt(curl_handle, CURLOPT_USERPWD, [userpwd cStringUsingEncoding:NSUTF8StringEncoding]);
+    curl_easy_perform(curl_handle);
+    curl_easy_cleanup(curl_handle);
+    return result;
+}
+
 - (NSDictionary *) post:(NSString *) path withForm:(NSDictionary *) formData
 {
     NSMutableData *body = [NSMutableData data];

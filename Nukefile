@@ -10,8 +10,10 @@
                (set @ldflags "-lcurl -framework Foundation -framework Nu "))
       ("Linux"
               (set @arch (list "i386"))
-              (set @cflags "-g -DLINUX -I/usr/include/GNUstep/Headers -I/usr/local/include -fconstant-string-class=NSConstantString ")
-              (set @ldflags "-L/usr/local/lib -lNu -lcurl"))
+              (set gnustep_flags ((NSString stringWithShellCommand:"gnustep-config --objc-flags") chomp))
+              (set gnustep_libs ((NSString stringWithShellCommand:"gnustep-config --base-libs") chomp))
+              (set @cflags "-g -DLINUX -I/usr/local/include #{gnustep_flags}")
+              (set @ldflags "#{gnustep_libs} -lNu -lcurl"))
       (else nil))
 
 

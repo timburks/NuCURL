@@ -93,8 +93,16 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     [super dealloc];
 }
 
-- (NSDictionary *) get:(NSString *) path
+
+
+
+- (NSDictionary *) get:(NSString *) path 
+           httpHeaders:(NSDictionary *) httpHeaders
+                  form:(NSDictionary *) formData 
+               userpwd:(NSString *) userpwd
 {
+    struct curl_slist *hdr_slist = NULL;
+
     NSMutableData *body = [NSMutableData data];
     NSMutableDictionary *header = [NSMutableDictionary dictionary];
     NSMutableDictionary *result = [NSMutableDictionary dictionaryWithObjectsAndKeys:header, @"header", body, @"body", nil];
@@ -105,64 +113,129 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, HeaderFunctionCallback);
     curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *) result);
     curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, [userAgent cStringUsingEncoding:NSUTF8StringEncoding]);
+    
+    if (httpHeaders)
+    {
+        NSEnumerator* e;
+        id key;
+        
+        e = [httpHeaders keyEnumerator];
+        
+        while ((key = [e nextObject]))
+        {
+            NSString* h = [NSString stringWithFormat:@"%@: %@", key, [httpHeaders objectForKey: key]];
+            hdr_slist = curl_slist_append(hdr_slist, [h cStringUsingEncoding:NSUTF8StringEncoding]);
+        }
+        curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, hdr_slist);
+    }
+
+    if (userpwd)
+    {
+        curl_easy_setopt(curl_handle, CURLOPT_USERPWD, [userpwd cStringUsingEncoding:NSUTF8StringEncoding]);
+    }
+
     curl_easy_perform(curl_handle);
     curl_easy_cleanup(curl_handle);
+
+    if (hdr_slist)
+    {
+        curl_slist_free_all(hdr_slist);
+    }
+   
     return result;
+}
+
+
+// Convenience functions for backward compatibility...
+- (NSDictionary *) get:(NSString *) path
+{
+    return [self get:path httpHeaders:nil form:nil userpwd:nil];
 }
 
 - (NSDictionary *) get:(NSString *) path userpwd:(NSString *) userpwd
 {
+    return [self get:path httpHeaders:nil form:nil userpwd:userpwd];
+}
+
+
+
+- (NSDictionary *) post:(NSString *) path
+            httpHeaders:(NSDictionary *) httpHeaders
+                   form:(NSDictionary *) formData
+               postBody:(NSString* ) postBody
+                userpwd:(NSString *) userpwd
+                 command:(NSString *) command   // can pass in "PUT", "DELETE", nil
+{
+    struct curl_slist *hdr_slist = NULL;
+
     NSMutableData *body = [NSMutableData data];
     NSMutableDictionary *header = [NSMutableDictionary dictionary];
     NSMutableDictionary *result = [NSMutableDictionary dictionaryWithObjectsAndKeys:header, @"header", body, @"body", nil];
     CURL *curl_handle = curl_easy_init();
+
     curl_easy_setopt(curl_handle, CURLOPT_URL, [path cStringUsingEncoding:NSUTF8StringEncoding]);
+    
+    if (formData)
+    {
+        curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, [[formData urlQueryString] cStringUsingEncoding:NSUTF8StringEncoding]);
+    }
+
+    if (postBody)
+    {
+        curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, [postBody cStringUsingEncoding:NSUTF8StringEncoding]);
+    }
+
+    if (command)
+    {
+        curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, [command cStringUsingEncoding:NSUTF8StringEncoding]);
+    }
+
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *) body);
     curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, HeaderFunctionCallback);
     curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *) result);
     curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, [userAgent cStringUsingEncoding:NSUTF8StringEncoding]);
-    curl_easy_setopt(curl_handle, CURLOPT_USERPWD, [userpwd cStringUsingEncoding:NSUTF8StringEncoding]);
+
+    if (httpHeaders)
+    {
+        NSEnumerator* e;
+        id key;
+        
+        e = [httpHeaders keyEnumerator];
+        
+        while ((key = [e nextObject]))
+        {
+            NSString* h = [NSString stringWithFormat:@"%@: %@", key, [httpHeaders objectForKey: key]];
+            hdr_slist = curl_slist_append(hdr_slist, [h cStringUsingEncoding:NSUTF8StringEncoding]);
+        }
+        curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, hdr_slist);
+    }
+
+    if (userpwd)
+    {
+        curl_easy_setopt(curl_handle, CURLOPT_USERPWD, [userpwd cStringUsingEncoding:NSUTF8StringEncoding]);
+    }
+
     curl_easy_perform(curl_handle);
     curl_easy_cleanup(curl_handle);
+
+    if (hdr_slist)
+    {
+        curl_slist_free_all(hdr_slist);
+    }
+   
     return result;
 }
 
+
 - (NSDictionary *) post:(NSString *) path withForm:(NSDictionary *) formData
 {
-    NSMutableData *body = [NSMutableData data];
-    NSMutableDictionary *header = [NSMutableDictionary dictionary];
-    NSMutableDictionary *result = [NSMutableDictionary dictionaryWithObjectsAndKeys:header, @"header", body, @"body", nil];
-    CURL *curl_handle = curl_easy_init();
-    curl_easy_setopt(curl_handle, CURLOPT_URL, [path cStringUsingEncoding:NSUTF8StringEncoding]);
-    curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, [[formData urlQueryString] cStringUsingEncoding:NSUTF8StringEncoding]);
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *) body);
-    curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, HeaderFunctionCallback);
-    curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *) result);
-    curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, [userAgent cStringUsingEncoding:NSUTF8StringEncoding]);
-    curl_easy_perform(curl_handle);
-    curl_easy_cleanup(curl_handle);
-    return result;
+    return [self post:path httpHeaders:nil form:formData postBody:nil userpwd:nil command:nil];
 }
 
 - (NSDictionary *) post:(NSString *) path withForm:(NSDictionary *) formData userpwd:(NSString *) userpwd 
 {
-    NSMutableData *body = [NSMutableData data];
-    NSMutableDictionary *header = [NSMutableDictionary dictionary];
-    NSMutableDictionary *result = [NSMutableDictionary dictionaryWithObjectsAndKeys:header, @"header", body, @"body", nil];
-    CURL *curl_handle = curl_easy_init();
-    curl_easy_setopt(curl_handle, CURLOPT_URL, [path cStringUsingEncoding:NSUTF8StringEncoding]);
-    curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, [[formData urlQueryString] cStringUsingEncoding:NSUTF8StringEncoding]);
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
-    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *) body);
-    curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, HeaderFunctionCallback);
-    curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *) result);
-    curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, [userAgent cStringUsingEncoding:NSUTF8StringEncoding]);
-    curl_easy_setopt(curl_handle, CURLOPT_USERPWD, [userpwd cStringUsingEncoding:NSUTF8StringEncoding]);
-    curl_easy_perform(curl_handle);
-    curl_easy_cleanup(curl_handle);
-    return result;
+    return [self post:path httpHeaders:nil form:formData postBody:nil userpwd:userpwd command:nil];
 }
 
 

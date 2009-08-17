@@ -28,6 +28,52 @@ limitations under the License.
 
 #import "helpers.h"
 
+// this class is a drop-in replacement for NSMutableData
+// it calls a handler for each line of data that it receives
+// use it to receive data from http connections that are held open by the server
+@interface LineCollector : NSObject 
+{
+   NSMutableString *partial;
+   id handler;
+}
+@end
+
+@implementation LineCollector
+
+- (id) initWithHandler:(id) h {
+   [super init];
+   handler = h;
+   partial = [[NSMutableString alloc] init];
+   return self;
+}
+
+- (void) appendBytes:(void *) ptr length:(int) length {
+   char *buffer = (char *) malloc((length + 1) * sizeof(char));
+   memcpy(buffer,ptr,length);
+   buffer[length] = 0;
+   
+   int start = 0;
+   for (int i = 0; i < length; i++) {
+      if (buffer[i] == '\r') {
+         buffer[i] = 0;
+         [partial appendFormat:@"%s", &buffer[start]];
+         [handler handleString:partial];
+         [partial release];
+         partial = [[NSMutableString alloc] init];
+         start = i+2;
+      }
+   }
+   if (start < length) {
+      [partial appendFormat:@"%s", &buffer[start]];
+   }
+}
+
+- (void) dealloc {
+   [partial release];
+}
+
+@end
+
 #define USERAGENT "Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_5_5; en-us) AppleWebKit/525.27.1 (KHTML, like Gecko) Version/3.2.1 Safari/525.27.1"
 
 static size_t WriteMemoryCallback(void *ptr, size_t size, size_t nmemb, void *data)
@@ -165,10 +211,11 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
                postBody:(NSString* ) postBody
                 userpwd:(NSString *) userpwd
                  command:(NSString *) command   // can pass in "PUT", "DELETE", nil
+               collector:(id) collector
 {
     struct curl_slist *hdr_slist = NULL;
 
-    NSMutableData *body = [NSMutableData data];
+    id body = collector ? collector : [NSMutableData data];
     NSMutableDictionary *header = [NSMutableDictionary dictionary];
     NSMutableDictionary *result = [NSMutableDictionary dictionaryWithObjectsAndKeys:header, @"header", body, @"body", nil];
     CURL *curl_handle = curl_easy_init();
@@ -227,6 +274,15 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     return result;
 }
 
+- (NSDictionary *) post:(NSString *) path
+            httpHeaders:(NSDictionary *) httpHeaders
+                   form:(NSDictionary *) formData
+               postBody:(NSString* ) postBody
+                userpwd:(NSString *) userpwd
+                 command:(NSString *) command 
+{
+   return [self post:path httpHeaders:httpHeaders form:formData postBody:postBody userpwd:userpwd command:command collector:nil];
+}
 
 - (NSDictionary *) post:(NSString *) path withForm:(NSDictionary *) formData
 {

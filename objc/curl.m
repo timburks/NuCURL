@@ -53,7 +53,8 @@ limitations under the License.
    buffer[length] = 0;
    
    int start = 0;
-   for (int i = 0; i < length; i++) {
+   int i;
+   for (i = 0; i < length; i++) {
       if (buffer[i] == '\r') {
          buffer[i] = 0;
          [partial appendFormat:@"%s", &buffer[start]];

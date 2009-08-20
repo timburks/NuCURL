@@ -34,7 +34,7 @@
 
 (task "install" => "framework" is
       (SH "sudo rm -rf /Library/Frameworks/#{@framework}.framework")
-      (SH "ditto #{@framework}.framework /Library/Frameworks/#{@framework}.framework"))
+      (SH "sudo cp -rp #{@framework}.framework /Library/Frameworks/#{@framework}.framework"))
 
 (task "test" => "framework" is
       (SH "nutest test/test_*.nu"))

@@ -75,6 +75,55 @@ limitations under the License.
 
 @end
 
+
+@interface ChunkedTransfer : NSObject {
+   NSData *data;
+   int position;
+}
+@end
+
+@implementation ChunkedTransfer
+
+- (id) initWithData:(NSData *) d
+{
+   self = [super init];
+   data = d;
+   position = 0;
+   return self;
+}
+
+size_t ReadMemoryCallback(void *ptr, size_t size, size_t nmemb, void *userp)
+{
+  //NSLog(@"size %d, nmemb %d", size, nmemb);
+   
+  if(size*nmemb < 1)
+    return 0;
+
+  ChunkedTransfer *transfer = (NSData *) userp;
+ 
+  if(transfer->position < [transfer->data length]) {
+     int chunksize = [transfer->data length] - transfer->position;
+     if (chunksize > size*nmemb)
+        chunksize = size*nmemb;
+     
+     memcpy(ptr, [transfer->data bytes]+transfer->position, chunksize);
+     //NSLog(@"returning %d", chunksize);
+     transfer->position += chunksize;
+     return chunksize;
+  }
+
+  return -1;                        /* no more data left to deliver */
+}
+
+- (void) dealloc 
+{
+   [data release];
+   [super dealloc];
+}
+@end
+
+
+
 #define USERAGENT "Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_5_5; en-us) AppleWebKit/525.27.1 (KHTML, like Gecko) Version/3.2.1 Safari/525.27.1"
 
 static size_t WriteMemoryCallback(void *ptr, size_t size, size_t nmemb, void *data)
@@ -145,7 +194,6 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
 
 - (NSDictionary *) get:(NSString *) path 
            httpHeaders:(NSDictionary *) httpHeaders
-                  form:(NSDictionary *) formData 
                userpwd:(NSString *) userpwd
 {
     struct curl_slist *hdr_slist = NULL;
@@ -196,12 +244,12 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
 // Convenience functions for backward compatibility...
 - (NSDictionary *) get:(NSString *) path
 {
-    return [self get:path httpHeaders:nil form:nil userpwd:nil];
+    return [self get:path httpHeaders:nil userpwd:nil];
 }
 
 - (NSDictionary *) get:(NSString *) path userpwd:(NSString *) userpwd
 {
-    return [self get:path httpHeaders:nil form:nil userpwd:userpwd];
+    return [self get:path httpHeaders:nil userpwd:userpwd];
 }
 
 
@@ -293,6 +341,78 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
 - (NSDictionary *) post:(NSString *) path withForm:(NSDictionary *) formData userpwd:(NSString *) userpwd 
 {
     return [self post:path httpHeaders:nil form:formData postBody:nil userpwd:userpwd command:nil];
+}
+
+
+
+
+- (NSDictionary *) put:(NSString *) path
+           httpHeaders:(NSDictionary *) httpHeaders
+               putBody:(NSData *) putBody
+               userpwd:(NSString *) userpwd
+               command:(NSString *) command   // can pass in "PUT", "DELETE", nil
+             collector:(id) collector
+{
+    struct curl_slist *hdr_slist = NULL;
+
+    id body = collector ? collector : [NSMutableData data];
+    NSMutableDictionary *header = [NSMutableDictionary dictionary];
+    NSMutableDictionary *result = [NSMutableDictionary dictionaryWithObjectsAndKeys:header, @"header", body, @"body", nil];
+    CURL *curl_handle = curl_easy_init();
+
+    curl_easy_setopt(curl_handle, CURLOPT_URL, [path cStringUsingEncoding:NSUTF8StringEncoding]);
+    curl_easy_setopt(curl_handle, CURLOPT_UPLOAD, 1);
+    
+    if (putBody)
+    {
+        curl_easy_setopt(curl_handle, CURLOPT_INFILESIZE, [putBody length]);
+    }
+    
+    if (command)
+    {
+        curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, [command cStringUsingEncoding:NSUTF8StringEncoding]);
+    }
+
+    ChunkedTransfer *transfer = [[ChunkedTransfer alloc] initWithData:putBody];
+
+    curl_easy_setopt(curl_handle, CURLOPT_READFUNCTION, ReadMemoryCallback);
+    curl_easy_setopt(curl_handle, CURLOPT_READDATA, (void *) transfer);
+    curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+    curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *) body);
+    curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, HeaderFunctionCallback);
+    curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *) result);
+    curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, [userAgent cStringUsingEncoding:NSUTF8StringEncoding]);
+
+    if (httpHeaders)
+    {
+        NSEnumerator* e;
+        id key;
+        
+        e = [httpHeaders keyEnumerator];
+        
+        while ((key = [e nextObject]))
+        {
+            NSString* h = [NSString stringWithFormat:@"%@: %@", key, [httpHeaders objectForKey: key]];
+            hdr_slist = curl_slist_append(hdr_slist, [h cStringUsingEncoding:NSUTF8StringEncoding]);
+        }
+        curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, hdr_slist);
+    }
+
+    if (userpwd)
+    {
+        curl_easy_setopt(curl_handle, CURLOPT_USERPWD, [userpwd cStringUsingEncoding:NSUTF8StringEncoding]);
+    }
+
+    curl_easy_perform(curl_handle);
+    curl_easy_cleanup(curl_handle);
+
+    if (hdr_slist)
+    {
+        curl_slist_free_all(hdr_slist);
+    }
+   
+    [transfer release];
+    return result;
 }
 
 

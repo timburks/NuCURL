@@ -26,7 +26,6 @@ limitations under the License.
 
 #import <Foundation/Foundation.h>
 
-#import "helpers.h"
 
 // this class is a drop-in replacement for NSMutableData
 // it calls a handler for each line of data that it receives

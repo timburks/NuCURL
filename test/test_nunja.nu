@@ -3,6 +3,7 @@
 ;;
 ;;  Copyright (c) 2009 Tim Burks, Neon Design Technology, Inc.
 (load "NuCURL")
+(load "NuHTTPHelpers")
 
 ;; These tests assume that the Nunja test server has already been started.
 ;; Do that by running "nunjad -s sample" in the Nunja project directory.

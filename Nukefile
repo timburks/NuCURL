@@ -6,6 +6,7 @@
 (set SYSTEM ((NSString stringWithShellCommand:"uname") chomp))
 (case SYSTEM
       ("Darwin"
+               (set @arch (list "x86_64"))
                (set @cflags "-g -std=gnu99 -DDARWIN")
                (set @ldflags "-lcurl -framework Foundation -framework Nu "))
       ("Linux"

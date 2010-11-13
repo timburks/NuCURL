@@ -26,102 +26,105 @@ limitations under the License.
 
 #import <Foundation/Foundation.h>
 
-
 // this class is a drop-in replacement for NSMutableData
 // it calls a handler for each line of data that it receives
 // use it to receive data from http connections that are held open by the server
-@interface LineCollector : NSObject 
+@interface LineCollector : NSObject
 {
-   NSMutableString *partial;
-   id handler;
+    NSMutableString *partial;
+    id handler;
 }
+
 @end
 
 @implementation LineCollector
 
-- (id) initWithHandler:(id) h {
-   [super init];
-   handler = h;
-   partial = [[NSMutableString alloc] init];
-   return self;
+- (id) initWithHandler:(id) h
+{
+    [super init];
+    handler = h;
+    partial = [[NSMutableString alloc] init];
+    return self;
 }
 
-- (void) appendBytes:(void *) ptr length:(int) length {
-   char *buffer = (char *) malloc((length + 1) * sizeof(char));
-   memcpy(buffer,ptr,length);
-   buffer[length] = 0;
-   
-   int start = 0;
-   int i;
-   for (i = 0; i < length; i++) {
-      if (buffer[i] == '\r') {
-         buffer[i] = 0;
-         [partial appendFormat:@"%s", &buffer[start]];
-         [handler handleString:partial];
-         [partial release];
-         partial = [[NSMutableString alloc] init];
-         start = i+2;
-      }
-   }
-   if (start < length) {
-      [partial appendFormat:@"%s", &buffer[start]];
-   }
+- (void) appendBytes:(void *) ptr length:(int) length
+{
+    char *buffer = (char *) malloc((length + 1) * sizeof(char));
+    memcpy(buffer,ptr,length);
+    buffer[length] = 0;
+
+    int start = 0;
+    int i;
+    for (i = 0; i < length; i++) {
+        if (buffer[i] == '\r') {
+            buffer[i] = 0;
+            [partial appendFormat:@"%s", &buffer[start]];
+            [handler handleString:partial];
+            [partial release];
+            partial = [[NSMutableString alloc] init];
+            start = i+2;
+        }
+    }
+    if (start < length) {
+        [partial appendFormat:@"%s", &buffer[start]];
+    }
 }
 
-- (void) dealloc {
-   [partial release];
+- (void) dealloc
+{
+    [partial release];
 }
 
 @end
 
-
-@interface ChunkedTransfer : NSObject {
-   NSData *data;
-   int position;
+@interface ChunkedTransfer : NSObject
+{
+    NSData *data;
+    int position;
 }
+
 @end
 
 @implementation ChunkedTransfer
 
 - (id) initWithData:(NSData *) d
 {
-   self = [super init];
-   data = d;
-   position = 0;
-   return self;
+    self = [super init];
+    data = d;
+    position = 0;
+    return self;
 }
 
 size_t ReadMemoryCallback(void *ptr, size_t size, size_t nmemb, void *userp)
 {
-  //NSLog(@"size %d, nmemb %d", size, nmemb);
-   
-  if(size*nmemb < 1)
-    return 0;
+    //NSLog(@"size %d, nmemb %d", size, nmemb);
 
-  ChunkedTransfer *transfer = (NSData *) userp;
- 
-  if(transfer->position < [transfer->data length]) {
-     int chunksize = [transfer->data length] - transfer->position;
-     if (chunksize > size*nmemb)
-        chunksize = size*nmemb;
-     
-     memcpy(ptr, [transfer->data bytes]+transfer->position, chunksize);
-     //NSLog(@"returning %d", chunksize);
-     transfer->position += chunksize;
-     return chunksize;
-  }
+    if(size*nmemb < 1)
+        return 0;
 
-  return -1;                        /* no more data left to deliver */
+    ChunkedTransfer *transfer = (NSData *) userp;
+
+    if(transfer->position < [transfer->data length]) {
+        int chunksize = [transfer->data length] - transfer->position;
+        if (chunksize > size*nmemb)
+            chunksize = size*nmemb;
+
+        memcpy(ptr, [transfer->data bytes]+transfer->position, chunksize);
+        //NSLog(@"returning %d", chunksize);
+        transfer->position += chunksize;
+        return chunksize;
+    }
+
+    return -1;                                    /* no more data left to deliver */
 }
 
-- (void) dealloc 
+- (void) dealloc
 {
-   [data release];
-   [super dealloc];
+    [data release];
+    [super dealloc];
 }
+
 @end
-
-
 
 #define USERAGENT "Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_5_5; en-us) AppleWebKit/525.27.1 (KHTML, like Gecko) Version/3.2.1 Safari/525.27.1"
 
@@ -143,11 +146,27 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     else if (((char *) ptr)[keyLength-1] == ':') {
         if (keyLength < nmemb) {
             //NSLog(@"%d %d", keyLength, nmemb);
-            NSString *value = [[NSString alloc] initWithData:[NSData dataWithBytes:ptr+keyLength+1 length:(nmemb - keyLength -3)] encoding:NSUTF8StringEncoding];
-            NSString *key = [[NSString alloc] initWithData:[NSData dataWithBytes:ptr length:keyLength-1] encoding:NSUTF8StringEncoding];
+            NSString *value = [[NSString alloc]
+                initWithData:[NSData dataWithBytes:ptr+keyLength+1 length:(nmemb - keyLength -3)]
+                encoding:NSUTF8StringEncoding];
+            NSString *key = [[NSString alloc]
+                initWithData:[NSData dataWithBytes:ptr length:keyLength-1]
+                encoding:NSUTF8StringEncoding];
             //NSLog(@"key is %@", key);
             //NSLog(@"value is %@", value);
-            [[((NSMutableDictionary *) data) objectForKey:@"header"] setObject:value forKey:key];
+
+            id headers = [((NSMutableDictionary *) data) objectForKey:@"header"];
+            id current = [headers objectForKey:key];
+            if (!current) {
+                [headers setObject:value forKey:key];
+            }
+			else if ([current isKindOfClass:[NSString class]]) {
+				NSMutableArray *array = [NSMutableArray arrayWithObjects:current, value, nil];
+				[headers setObject:array forKey:key];				
+			} 
+			else if ([current isKindOfClass:[NSArray class]]) {
+				[current addObject:value];
+			}
         }
     }
     else {
@@ -175,7 +194,8 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     return [super init];
 }
 
-- (NuCURL *) initWithUserAgent:(NSString *) _userAgent {
+- (NuCURL *) initWithUserAgent:(NSString *) _userAgent
+{
     [super init];
     curl_global_init(CURL_GLOBAL_ALL);
     userAgent = [_userAgent retain];
@@ -188,12 +208,9 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     [super dealloc];
 }
 
-
-
-
-- (NSDictionary *) get:(NSString *) path 
-           httpHeaders:(NSDictionary *) httpHeaders
-               userpwd:(NSString *) userpwd
+- (NSDictionary *) get:(NSString *) path
+httpHeaders:(NSDictionary *) httpHeaders
+userpwd:(NSString *) userpwd
 {
     struct curl_slist *hdr_slist = NULL;
 
@@ -207,38 +224,33 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, HeaderFunctionCallback);
     curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *) result);
     curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, [userAgent cStringUsingEncoding:NSUTF8StringEncoding]);
-    
-    if (httpHeaders)
-    {
+
+    if (httpHeaders) {
         NSEnumerator* e;
         id key;
-        
+
         e = [httpHeaders keyEnumerator];
-        
-        while ((key = [e nextObject]))
-        {
+
+        while ((key = [e nextObject])) {
             NSString* h = [NSString stringWithFormat:@"%@: %@", key, [httpHeaders objectForKey: key]];
             hdr_slist = curl_slist_append(hdr_slist, [h cStringUsingEncoding:NSUTF8StringEncoding]);
         }
         curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, hdr_slist);
     }
 
-    if (userpwd)
-    {
+    if (userpwd) {
         curl_easy_setopt(curl_handle, CURLOPT_USERPWD, [userpwd cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
     curl_easy_perform(curl_handle);
     curl_easy_cleanup(curl_handle);
 
-    if (hdr_slist)
-    {
+    if (hdr_slist) {
         curl_slist_free_all(hdr_slist);
     }
-   
+
     return result;
 }
-
 
 // Convenience functions for backward compatibility...
 - (NSDictionary *) get:(NSString *) path
@@ -251,15 +263,13 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     return [self get:path httpHeaders:nil userpwd:userpwd];
 }
 
-
-
 - (NSDictionary *) post:(NSString *) path
-            httpHeaders:(NSDictionary *) httpHeaders
-                   form:(NSDictionary *) formData
-               postBody:(NSString* ) postBody
-                userpwd:(NSString *) userpwd
-                 command:(NSString *) command   // can pass in "PUT", "DELETE", nil
-               collector:(id) collector
+httpHeaders:(NSDictionary *) httpHeaders
+form:(NSDictionary *) formData
+postBody:(NSString* ) postBody
+userpwd:(NSString *) userpwd
+command:(NSString *) command                      // can pass in "PUT", "DELETE", nil
+collector:(id) collector
 {
     struct curl_slist *hdr_slist = NULL;
 
@@ -269,19 +279,16 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     CURL *curl_handle = curl_easy_init();
 
     curl_easy_setopt(curl_handle, CURLOPT_URL, [path cStringUsingEncoding:NSUTF8StringEncoding]);
-    
-    if (formData)
-    {
+
+    if (formData) {
         curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, [[formData urlQueryString] cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
-    if (postBody)
-    {
+    if (postBody) {
         curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, [postBody cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
-    if (command)
-    {
+    if (command) {
         curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, [command cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
@@ -291,45 +298,41 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *) result);
     curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, [userAgent cStringUsingEncoding:NSUTF8StringEncoding]);
 
-    if (httpHeaders)
-    {
+    if (httpHeaders) {
         NSEnumerator* e;
         id key;
-        
+
         e = [httpHeaders keyEnumerator];
-        
-        while ((key = [e nextObject]))
-        {
+
+        while ((key = [e nextObject])) {
             NSString* h = [NSString stringWithFormat:@"%@: %@", key, [httpHeaders objectForKey: key]];
             hdr_slist = curl_slist_append(hdr_slist, [h cStringUsingEncoding:NSUTF8StringEncoding]);
         }
         curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, hdr_slist);
     }
 
-    if (userpwd)
-    {
+    if (userpwd) {
         curl_easy_setopt(curl_handle, CURLOPT_USERPWD, [userpwd cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
     curl_easy_perform(curl_handle);
     curl_easy_cleanup(curl_handle);
 
-    if (hdr_slist)
-    {
+    if (hdr_slist) {
         curl_slist_free_all(hdr_slist);
     }
-   
+
     return result;
 }
 
 - (NSDictionary *) post:(NSString *) path
-            httpHeaders:(NSDictionary *) httpHeaders
-                   form:(NSDictionary *) formData
-               postBody:(NSString* ) postBody
-                userpwd:(NSString *) userpwd
-                 command:(NSString *) command 
+httpHeaders:(NSDictionary *) httpHeaders
+form:(NSDictionary *) formData
+postBody:(NSString* ) postBody
+userpwd:(NSString *) userpwd
+command:(NSString *) command
 {
-   return [self post:path httpHeaders:httpHeaders form:formData postBody:postBody userpwd:userpwd command:command collector:nil];
+    return [self post:path httpHeaders:httpHeaders form:formData postBody:postBody userpwd:userpwd command:command collector:nil];
 }
 
 - (NSDictionary *) post:(NSString *) path withForm:(NSDictionary *) formData
@@ -337,20 +340,17 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     return [self post:path httpHeaders:nil form:formData postBody:nil userpwd:nil command:nil];
 }
 
-- (NSDictionary *) post:(NSString *) path withForm:(NSDictionary *) formData userpwd:(NSString *) userpwd 
+- (NSDictionary *) post:(NSString *) path withForm:(NSDictionary *) formData userpwd:(NSString *) userpwd
 {
     return [self post:path httpHeaders:nil form:formData postBody:nil userpwd:userpwd command:nil];
 }
 
-
-
-
 - (NSDictionary *) put:(NSString *) path
-           httpHeaders:(NSDictionary *) httpHeaders
-               putBody:(NSData *) putBody
-               userpwd:(NSString *) userpwd
-               command:(NSString *) command   // can pass in "PUT", "DELETE", nil
-             collector:(id) collector
+httpHeaders:(NSDictionary *) httpHeaders
+putBody:(NSData *) putBody
+userpwd:(NSString *) userpwd
+command:(NSString *) command                      // can pass in "PUT", "DELETE", nil
+collector:(id) collector
 {
     struct curl_slist *hdr_slist = NULL;
 
@@ -361,14 +361,12 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
 
     curl_easy_setopt(curl_handle, CURLOPT_URL, [path cStringUsingEncoding:NSUTF8StringEncoding]);
     curl_easy_setopt(curl_handle, CURLOPT_UPLOAD, 1);
-    
-    if (putBody)
-    {
+
+    if (putBody) {
         curl_easy_setopt(curl_handle, CURLOPT_INFILESIZE, [putBody length]);
     }
-    
-    if (command)
-    {
+
+    if (command) {
         curl_easy_setopt(curl_handle, CURLOPT_CUSTOMREQUEST, [command cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
@@ -382,39 +380,33 @@ static size_t HeaderFunctionCallback(void *ptr, size_t size, size_t nmemb, void 
     curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *) result);
     curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, [userAgent cStringUsingEncoding:NSUTF8StringEncoding]);
 
-    if (httpHeaders)
-    {
+    if (httpHeaders) {
         NSEnumerator* e;
         id key;
-        
+
         e = [httpHeaders keyEnumerator];
-        
-        while ((key = [e nextObject]))
-        {
+
+        while ((key = [e nextObject])) {
             NSString* h = [NSString stringWithFormat:@"%@: %@", key, [httpHeaders objectForKey: key]];
             hdr_slist = curl_slist_append(hdr_slist, [h cStringUsingEncoding:NSUTF8StringEncoding]);
         }
         curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, hdr_slist);
     }
 
-    if (userpwd)
-    {
+    if (userpwd) {
         curl_easy_setopt(curl_handle, CURLOPT_USERPWD, [userpwd cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
     curl_easy_perform(curl_handle);
     curl_easy_cleanup(curl_handle);
 
-    if (hdr_slist)
-    {
+    if (hdr_slist) {
         curl_slist_free_all(hdr_slist);
     }
-   
+
     [transfer release];
     return result;
 }
-
-
 
 // nonworking
 + (NSData *) post:(NSString *) path withMultipartForm:(NSDictionary *) formData
